@@ -302,8 +302,21 @@
 
             normalize(text) {
                 return text.toLowerCase()
-                    .replace(/[！！?？。、,\. ]/g, '')
+                    .replace(/[！!？?。、,．. ・　]/g, '')
                     .trim();
+            }
+
+            isKeywordMatch(input, keyword) {
+                const cleanInput = this.normalize(input);
+                const cleanKeyword = this.normalize(keyword);
+                if (!cleanInput || !cleanKeyword) return false;
+                if (cleanInput === cleanKeyword) return true;
+
+                // 1〜2文字の略語は、別の単語の一部として解釈しない。
+                const isShortLatinKeyword = /^[a-z0-9]+$/i.test(cleanKeyword) && cleanKeyword.length < 3;
+                return cleanKeyword.length >= 3 &&
+                    !isShortLatinKeyword &&
+                    cleanInput.includes(cleanKeyword);
             }
 
             // N-gram（2文字スライス）による文字列類似度算出（あいまい判定用）
@@ -312,7 +325,15 @@
                 const cleanB = this.normalize(textB);
                 if (!cleanA || !cleanB) return 0;
 
-                if (cleanA.includes(cleanB) || cleanB.includes(cleanA)) return 1.0;
+                if (cleanA === cleanB) return 1.0;
+                if (cleanA.length < 2 || cleanB.length < 2) return 0;
+
+                // 短い英字略語や1文字入力による誤検出を防ぐ。
+                const isShortLatinKeyword = /^[a-z0-9]+$/i.test(cleanB) && cleanB.length < 3;
+                if (isShortLatinKeyword) return 0;
+                if (cleanA.includes(cleanB) && cleanB.length >= 3) return 0.95;
+                if (cleanB.includes(cleanA) && cleanA.length >= 3) return 0.85;
+                if (cleanA.length < 3 || cleanB.length < 3) return 0;
 
                 let matches = 0;
                 for (let i = 0; i < cleanA.length - 1; i++) {
@@ -345,7 +366,7 @@
                 // 2. 会話辞書（dictionary）の判定
                 for (const dict of this.db.dictionary) {
                     for (const kw of dict.keywords) {
-                        if (normInput.includes(this.normalize(kw))) {
+                        if (this.isKeywordMatch(normInput, kw)) {
                             const responses = dict.responses;
                             return responses[Math.floor(Math.random() * responses.length)];
                         }
@@ -366,7 +387,7 @@
                     }
                 }
 
-                if (bestMatch && highestScore >= 0.45) {
+                if (bestMatch && highestScore >= 0.62) {
                     return `${bestMatch.title}について教えるね！\n${bestMatch.content}`;
                 }
 
